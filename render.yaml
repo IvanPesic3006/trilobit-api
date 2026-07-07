@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: trilobit-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: FRONTEND_URL
+        value: https://trilobit.hr
+      - key: MAIL_TO
+        value: info@trilobit.hr
+      - key: MAIL_FROM
+        value: info@trilobit.hr

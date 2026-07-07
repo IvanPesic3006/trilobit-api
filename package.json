@@ -1,0 +1,17 @@
+{
+  "name": "trilobit-api",
+  "version": "1.0.0",
+  "description": "Backend API za Trilobit web stranicu",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0",
+    "nodemailer": "^9.0.3"
+  }
+}
