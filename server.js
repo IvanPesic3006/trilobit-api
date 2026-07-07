@@ -130,7 +130,18 @@ app.use(
 app.use(express.json())
 
 app.get('/api/health', (request, response) => {
-  response.json({ status: 'ok', message: 'Trilobit API radi' })
+  const smtpCheck = {
+    SMTP_HOST: Boolean(process.env.SMTP_HOST),
+    SMTP_USER: Boolean(process.env.SMTP_USER),
+    SMTP_PASS: Boolean(process.env.SMTP_PASS),
+  }
+
+  response.json({
+    status: 'ok',
+    message: 'Trilobit API radi',
+    smtpConfigured: smtpCheck.SMTP_HOST && smtpCheck.SMTP_USER && smtpCheck.SMTP_PASS,
+    smtpCheck,
+  })
 })
 
 app.get('/api/hello', (request, response) => {
@@ -168,18 +179,26 @@ app.post('/api/contact', async (request, response) => {
       message: lang === 'en' ? 'Message received' : 'Poruka je zaprimljena',
     })
   } catch (error) {
-    console.error('Greška pri slanju emaila:', error)
+    console.error('Greška pri slanju emaila:')
+    console.error('  code:', error.code)
+    console.error('  command:', error.command)
+    console.error('  response:', error.response)
+    console.error('  message:', error.message)
     const t = validationMessages[lang === 'en' ? 'en' : 'hr']
     return response.status(500).json({
       success: false,
       message: t.emailSendFailed,
+      debug: {
+        code: error.code || null,
+        response: error.response || null,
+      },
     })
   }
 })
 
 app.listen(PORT, () => {
   console.log(`Server sluša na http://localhost:${PORT}`)
-  if (!process.env.SMTP_HOST) {
-    console.log('SMTP nije konfiguriran — dodaj podatke u .env za slanje emaila')
-  }
+  console.log('SMTP_HOST:', process.env.SMTP_HOST ? 'postavljen' : 'NEDOSTAJE')
+  console.log('SMTP_USER:', process.env.SMTP_USER ? 'postavljen' : 'NEDOSTAJE')
+  console.log('SMTP_PASS:', process.env.SMTP_PASS ? 'postavljen' : 'NEDOSTAJE')
 })
