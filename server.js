@@ -88,20 +88,24 @@ function createMailTransporter() {
   })
 }
 
-async function sendContactEmail({ name, email, message }) {
-  const transporter = createMailTransporter()
+function isEmailConfigured() {
+  if (process.env.RESEND_API_KEY) return true
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)
+}
 
-  if (!transporter) {
-    return { sent: false, reason: 'not_configured' }
-  }
+function getEmailProvider() {
+  if (process.env.RESEND_API_KEY) return 'resend'
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) return 'smtp'
+  return 'none'
+}
 
+function buildContactEmailContent({ name, email, message }) {
   const mailTo = process.env.MAIL_TO || 'info@trilobit.hr'
-  const mailFrom = process.env.MAIL_FROM || process.env.SMTP_USER
+  const mailFrom = process.env.MAIL_FROM || process.env.SMTP_USER || 'info@trilobit.hr'
 
-  await transporter.sendMail({
-    from: mailFrom,
-    to: mailTo,
-    replyTo: email,
+  return {
+    mailTo,
+    mailFrom,
     subject: `Trilobit kontakt: ${name}`,
     text: `Ime: ${name}\nEmail: ${email}\n\nPoruka:\n${message}`,
     html: `
@@ -111,9 +115,74 @@ async function sendContactEmail({ name, email, message }) {
       <p><strong>Poruka:</strong></p>
       <p>${message.replace(/\n/g, '<br>')}</p>
     `,
+  }
+}
+
+async function sendViaResend({ name, email, message }) {
+  const { mailTo, mailFrom, subject, text, html } = buildContactEmailContent({
+    name,
+    email,
+    message,
+  })
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: `Trilobit <${mailFrom}>`,
+      to: [mailTo],
+      reply_to: email,
+      subject,
+      text,
+      html,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.text()
+    const error = new Error(`Resend error: ${errorBody}`)
+    error.code = 'RESEND_ERROR'
+    error.response = errorBody
+    throw error
+  }
+
+  return { sent: true }
+}
+
+async function sendViaSmtp({ name, email, message }) {
+  const transporter = createMailTransporter()
+
+  if (!transporter) {
+    return { sent: false, reason: 'not_configured' }
+  }
+
+  const { mailTo, mailFrom, subject, text, html } = buildContactEmailContent({
+    name,
+    email,
+    message,
+  })
+
+  await transporter.sendMail({
+    from: mailFrom,
+    to: mailTo,
+    replyTo: email,
+    subject,
+    text,
+    html,
   })
 
   return { sent: true }
+}
+
+async function sendContactEmail({ name, email, message }) {
+  if (process.env.RESEND_API_KEY) {
+    return sendViaResend({ name, email, message })
+  }
+
+  return sendViaSmtp({ name, email, message })
 }
 
 app.use(
@@ -130,17 +199,15 @@ app.use(
 app.use(express.json())
 
 app.get('/api/health', (request, response) => {
-  const smtpCheck = {
-    SMTP_HOST: Boolean(process.env.SMTP_HOST),
-    SMTP_USER: Boolean(process.env.SMTP_USER),
-    SMTP_PASS: Boolean(process.env.SMTP_PASS),
-  }
-
   response.json({
     status: 'ok',
     message: 'Trilobit API radi',
-    smtpConfigured: smtpCheck.SMTP_HOST && smtpCheck.SMTP_USER && smtpCheck.SMTP_PASS,
-    smtpCheck,
+    emailConfigured: isEmailConfigured(),
+    emailProvider: getEmailProvider(),
+    note:
+      getEmailProvider() === 'smtp'
+        ? 'Render free plan blokira SMTP portove — koristi RESEND_API_KEY'
+        : null,
   })
 })
 
@@ -198,7 +265,8 @@ app.post('/api/contact', async (request, response) => {
 
 app.listen(PORT, () => {
   console.log(`Server sluša na http://localhost:${PORT}`)
-  console.log('SMTP_HOST:', process.env.SMTP_HOST ? 'postavljen' : 'NEDOSTAJE')
-  console.log('SMTP_USER:', process.env.SMTP_USER ? 'postavljen' : 'NEDOSTAJE')
-  console.log('SMTP_PASS:', process.env.SMTP_PASS ? 'postavljen' : 'NEDOSTAJE')
+  console.log('Email provider:', getEmailProvider())
+  if (getEmailProvider() === 'smtp') {
+    console.log('NAPOMENA: Render free plan blokira SMTP — dodaj RESEND_API_KEY')
+  }
 })
